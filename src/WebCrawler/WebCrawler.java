@@ -12,8 +12,6 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.URL;
 import java.util.*;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 public class WebCrawler {
 
@@ -26,9 +24,7 @@ public class WebCrawler {
 
     // Starting point for our crawl ... could be a parameter going forwards
     private static String startUrl = "https://www.cotswoldwildlifepark.co.uk/";
-    private static String rootUrl = "cotswoldwildlifepark.co.uk";
-     // private static String startUrl = "http://www.asplen.co.uk";
-
+    private static String rootUrl = "";
 
     /**
      * Searches html content for urls and then scans each page found
@@ -37,59 +33,45 @@ public class WebCrawler {
     public void search_page( Document html ) {
 
         Elements linksOnPage = html.select("a[href]");
+        int new_links_found = 0;
 
-        System.out.println("Found (" + linksOnPage.size() + ") links");
-        for(Element link : linksOnPage)
-        {
-            pagesToVisit.add(link.absUrl("href"));
+        for( Element link : linksOnPage ) {
+            if( link.absUrl( "href" ).contains( rootUrl )
+                    && !pagesToVisit.contains(link.absUrl("href"))
+                    && !pagesVisited.contains(link.absUrl("href")) ) {
+                pagesToVisit.add(link.absUrl("href"));
+                new_links_found++;
+            }
         }
 
-        //  Pattern linkPattern = Pattern.compile("<a\\s?href=['\"](.*?)[\"']>(.*?)</a>", Pattern.DOTALL);
-        //  Matcher pageMatcher = linkPattern.matcher(html);
-        //    System.out.println( html );
-         // while(pageMatcher.find()){
-          //      String next_url = pageMatcher.group(1); //
-/*                if( !pagesVisited.contains(next_url)) {
-                    pagesToVisit.add(next_url);
-                    System.out.println( next_url );
-                    try {
-                        URL url = new URL(next_url);
-                        String s = url.getProtocol() + "://" + url.getHost() + url.getPath();
-
-                        if( s.contains(rootUrl)) {
-                            System.out.println( "X" + new URL(s) );
-                            this.scan_page(new URL(s));
-                        }
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                    }
-                }*/
-          //}
-          System.out.println( pagesToVisit );
+        System.out.println( " Links found = " + new_links_found );
     }
 
-    /**
-     * Reads page content for a url and then gets it searched
-     * @param url
-     * @throws IOException
-     */
-    public void scan_page(URL url) throws IOException {
-        pagesVisited.add( url.toString() );
-        BufferedReader in = new BufferedReader(
-                    new InputStreamReader(url.openStream()));
 
-        System.out.println("PAGE:" + url);
-        StringBuffer sb;
-        Scanner sc = new Scanner(url.openStream());
-
-        sb = new StringBuffer();
-        while (sc.hasNext()) {
-            sb.append(sc.next());
+    public static void crawl( String url ) {
+        System.out.print( "Visiting: " + url );
+        if( url.endsWith( ".pdf" ) || url.endsWith( ".jpg" ) ) {
+            System.out.println( " skipped");
+            return;
         }
-      //  search_page( sb.toString() );
-        in.close();
-    }
+        if( url.contains( "?") ) {
+            url = url.substring( 0, url.indexOf( "?" ));
+            System.out.println( " removed parameters " + url );
+        }
+        // Get a connection using Jsoup and open the start page.
+        Connection connection = Jsoup.connect(url).userAgent(USER_AGENT);
+        Document htmlDocument = null;
+        try {
+            htmlDocument = connection.get();
+        } catch (IOException e) {
+            e.printStackTrace();
+            return;
+        }
 
+        // Start from the initial page and crawl through all found URLs
+        WebCrawler webCrawler = new WebCrawler();
+        webCrawler.search_page( htmlDocument );
+    }
 
     /**
      * main entry
@@ -98,14 +80,24 @@ public class WebCrawler {
      */
     public static void main(String[] args) throws Exception {
 
-        Connection connection = Jsoup.connect(startUrl).userAgent(USER_AGENT);
-        Document htmlDocument = connection.get();
-        System.out.println( htmlDocument);
+        // establish our root url (remove up to www)
+        rootUrl = startUrl.substring( startUrl.indexOf( "www." ) + 4 );
+        System.out.println( "root = " + rootUrl );
+        // Open the start page and get crawling
+        pagesVisited.add( startUrl );
+        crawl( startUrl );
 
-        //URL url = new URL(startUrl);
-        WebCrawler webCrawler = new WebCrawler();
-        webCrawler.search_page(htmlDocument);
+        // Now loop through all the links we've found and crawl through those
+        while( pagesToVisit.size() > 0 ) {
+            // Get the first page to visit
+            String nextUrl = pagesToVisit.get( 0 );
+            pagesVisited.add( nextUrl );
+            pagesToVisit.remove( 0 );
+            crawl( nextUrl );
+        }
 
+        System.out.println( "At " + startUrl + " I visited " + pagesVisited.size() + " pages." );
+        System.out.println( "Completed" );
     }
 
 }
